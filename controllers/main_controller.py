@@ -65,6 +65,18 @@ class MainController:
         """
         return self.data_service.calculate_kpis(df)
 
+    def get_verba_insuficiente_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Retorna registros de Verba Insuficiente para exibição separada.
+
+        Args:
+            df: DataFrame filtrado
+
+        Returns:
+            DataFrame com registros de Verba Insuficiente
+        """
+        return self.data_service.prepare_verba_insuficiente_data(df)
+
     def prepare_comparison_chart_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Prepara dados para gráfico de comparação.

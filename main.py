@@ -17,6 +17,7 @@ from utils.ui_components import (
     render_logo_centered,
     render_kpi_cards,
     render_comparison_chart,
+    render_verba_insuficiente_section,
     render_health_donut
 )
 
@@ -220,6 +221,9 @@ def render_dashboard_screen():
     )
     df_comparacao = controller.prepare_comparison_chart_data(df_filtrado)
     render_comparison_chart(df_comparacao, COLORS)
+
+    df_verba = controller.get_verba_insuficiente_data(df_filtrado)
+    render_verba_insuficiente_section(df_verba, COLORS)
 
     st.write("##")
     st.markdown(
