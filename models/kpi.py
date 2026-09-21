@@ -12,6 +12,7 @@ class KPI:
 
     total_disparos: int
     execucoes_concluidas: int
+    verba_insuficiente: int
     health_score: float
     volume_entregue: int
     resultado_esperado_total: int
@@ -20,8 +21,8 @@ class KPI:
 
     @property
     def execucoes_falhadas(self) -> int:
-        """Calcula o número de execuções que falharam"""
-        return self.total_disparos - self.execucoes_concluidas
+        """Calcula falhas reais (exclui Verba Insuficiente, que não é erro de execução)"""
+        return max(0, self.total_disparos - self.execucoes_concluidas - self.verba_insuficiente)
 
     @property
     def taxa_sucesso(self) -> float:
@@ -34,6 +35,7 @@ class KPI:
             'total_disparos': self.total_disparos,
             'execucoes_concluidas': self.execucoes_concluidas,
             'execucoes_falhadas': self.execucoes_falhadas,
+            'verba_insuficiente': self.verba_insuficiente,
             'health_score': round(self.health_score, 1),
             'volume_entregue': self.volume_entregue,
             'resultado_esperado_total': self.resultado_esperado_total,

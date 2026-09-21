@@ -6,7 +6,11 @@ Transforma dados brutos em informações úteis para o dashboard.
 import pandas as pd
 from typing import List, Dict, Any
 from models.kpi import KPI
+<<<<<<< HEAD
 from utils.constants import AREAS_MAP, TIPO_FALHA_MAP, TIPO_FALHA_NAO_CLASSIFICADO
+=======
+from utils.constants import AREAS_MAP, ERRO_VERBA_INSUFICIENTE
+>>>>>>> 261c7aade5d77726da687a9bd69ee2c71f787d74
 
 
 class DataService:
@@ -102,23 +106,30 @@ class DataService:
         """
         total_disparos = len(df)
 
+        mask_verba = DataService._mask_verba_insuficiente(df)
+        verba_insuficiente = int(mask_verba.sum())
+
+        # Exclui verba de todos os cálculos de saúde e volumetria
+        df_sem_verba = df[~mask_verba]
+        total_efetivo = len(df_sem_verba)
+
         execucoes_concluidas = len(
-            df[df['status'].str.lower() == 'concluído']
-        ) if 'status' in df.columns else 0
+            df_sem_verba[df_sem_verba['status'].str.lower() == 'concluído']
+        ) if 'status' in df_sem_verba.columns and total_efetivo > 0 else 0
 
         health_score = (
-            (execucoes_concluidas / total_disparos * 100)
-            if total_disparos > 0 else 0
+            (execucoes_concluidas / total_efetivo * 100)
+            if total_efetivo > 0 else 0
         )
 
         volume_entregue = (
-            df['resultado_entregue'].sum()
-            if 'resultado_entregue' in df.columns else 0
+            df_sem_verba['resultado_entregue'].sum()
+            if 'resultado_entregue' in df_sem_verba.columns else 0
         )
 
         resultado_esperado_total = (
-            df['resultado_esperado'].sum()
-            if 'resultado_esperado' in df.columns else 0
+            df_sem_verba['resultado_esperado'].sum()
+            if 'resultado_esperado' in df_sem_verba.columns else 0
         )
 
         resultado_entregue_total = volume_entregue
@@ -131,6 +142,7 @@ class DataService:
         return KPI(
             total_disparos=total_disparos,
             execucoes_concluidas=execucoes_concluidas,
+            verba_insuficiente=verba_insuficiente,
             health_score=health_score,
             volume_entregue=int(volume_entregue),
             resultado_esperado_total=int(resultado_esperado_total),
@@ -153,15 +165,40 @@ class DataService:
         return df['area_nome'].value_counts().to_dict()
 
     @staticmethod
-    def prepare_comparison_data(df: pd.DataFrame) -> pd.DataFrame:
+    def _mask_verba_insuficiente(df: pd.DataFrame) -> pd.Series:
+        """Retorna máscara booleana para registros de Verba Insuficiente"""
+        if 'erros' not in df.columns:
+            return pd.Series(False, index=df.index)
+        return df['erros'].str.contains(ERRO_VERBA_INSUFICIENTE, case=False, na=False)
+
+    @staticmethod
+    def prepare_verba_insuficiente_data(df: pd.DataFrame) -> pd.DataFrame:
         """
-        Prepara dados para gráfico de comparação esperado vs entregue.
+        Retorna registros com erro de Verba Insuficiente para exibição separada.
 
         Args:
             df: DataFrame filtrado
 
         Returns:
-            DataFrame agrupado por processo
+            DataFrame apenas com registros de Verba Insuficiente
+        """
+        if df.empty:
+            return pd.DataFrame()
+        mask = DataService._mask_verba_insuficiente(df)
+        return df[mask].copy()
+
+    @staticmethod
+    def prepare_comparison_data(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Prepara dados para gráfico de comparação esperado vs entregue.
+        Registros de Verba Insuficiente são separados em coluna própria
+        e excluídos do Esperado/Entregue para não distorcer o gráfico.
+
+        Args:
+            df: DataFrame filtrado
+
+        Returns:
+            DataFrame agrupado por processo com coluna resultado_verba_insuficiente
         """
         if df.empty:
             return pd.DataFrame()
@@ -170,10 +207,32 @@ class DataService:
         if not all(col in df.columns for col in required_cols):
             return pd.DataFrame()
 
-        df_comparacao = df.groupby('nome_processo').agg({
+        mask_verba = DataService._mask_verba_insuficiente(df)
+
+        # Linhas normais (sem verba)
+        df_normal = df[~mask_verba]
+        if df_normal.empty:
+            return pd.DataFrame()
+
+        df_comparacao = df_normal.groupby('nome_processo').agg({
             'resultado_esperado': 'sum',
             'resultado_entregue': 'sum'
         }).reset_index()
+
+        # Linhas de verba: agrega esperado como "volume bloqueado por verba"
+        df_verba = df[mask_verba]
+        if not df_verba.empty:
+            df_verba_grouped = df_verba.groupby('nome_processo').agg(
+                resultado_verba_insuficiente=('resultado_esperado', 'sum')
+            ).reset_index()
+            df_comparacao = df_comparacao.merge(
+                df_verba_grouped, on='nome_processo', how='left'
+            )
+            df_comparacao['resultado_verba_insuficiente'] = (
+                df_comparacao['resultado_verba_insuficiente'].fillna(0).astype(int)
+            )
+        else:
+            df_comparacao['resultado_verba_insuficiente'] = 0
 
         return df_comparacao.sort_values(by='resultado_esperado', ascending=True)
 
