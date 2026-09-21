@@ -1,0 +1,891 @@
+import streamlit as st
+import pandas as pd
+import requests
+import plotly.graph_objects as go
+import plotly.express as px
+from datetime import datetime
+import os
+from dotenv import load_dotenv
+import locale
+
+# Configurar locale para português do Brasil
+try:
+    locale.setlocale(locale.LC_TIME, 'pt_BR.UTF-8')
+except:
+    try:
+        locale.setlocale(locale.LC_TIME, 'Portuguese_Brazil.1252')
+    except:
+        pass  # Se não conseguir configurar, mantém padrão
+
+# Carregar variáveis de ambiente
+load_dotenv('config/.env')
+
+# 1. CONFIGURAÇÃO DA PÁGINA (Deve ser a primeira linha do Streamlit)
+st.set_page_config(page_title="RPA Analytics | Grupo Odilon Santos", layout="wide")
+
+# --- INICIALIZAR ESTADO DO TEMA ---
+if 'tema_escuro' not in st.session_state:
+    st.session_state.tema_escuro = True
+
+# --- PALETAS DE CORES BASEADAS NA IDENTIDADE VISUAL OSAC ---
+# Logo OSAC: "S" laranja (#EF7D1E) + anel preto (#000000) em fundo branco
+COLORS_DARK = {
+    "primary": "#EF7D1E",      # Laranja OSAC (do "S" da logo)
+    "secondary": "#000000",    # Preto OSAC (do anel)
+    "background": "#0A0A0A",   # Preto profundo
+    "card": "#1A1A1A",         # Preto mais claro para cards
+    "text": "#FFFFFF",         # Branco puro para máxima legibilidade
+    "text_secondary": "#CCCCCC",  # Cinza claro para textos secundários
+    "success": "#27AE60",      # Verde para sucesso
+    "error": "#E74C3C",        # Vermelho para erros
+    "info": "#3498DB",         # Azul para informações
+    "border": "#2A2A2A",       # Bordas sutis
+    "sidebar": "#0A0A0A"       # Sidebar igual ao background
+}
+
+COLORS_LIGHT = {
+    "primary": "#EF7D1E",      # Laranja OSAC (do "S" da logo)
+    "secondary": "#000000",    # Preto OSAC (do anel)
+    "background": "#FFFFFF",   # Branco puro
+    "card": "#F8F8F8",         # Cinza muito claro para cards
+    "text": "#1A1A1A",         # Preto para texto principal
+    "text_secondary": "#666666",  # Cinza médio para textos secundários
+    "success": "#27AE60",      # Verde para sucesso
+    "error": "#E74C3C",        # Vermelho para erros
+    "info": "#3498DB",         # Azul para informações
+    "border": "#E0E0E0",       # Bordas claras
+    "sidebar": "#FAFAFA"       # Sidebar clarinha
+}
+
+# Selecionar paleta baseada no tema atual
+COLORS = COLORS_DARK if st.session_state.tema_escuro else COLORS_LIGHT
+
+# Injeção de CSS para customização fina da interface
+st.markdown(f"""
+    <style>
+    .stApp {{
+        background-color: {COLORS['background']};
+        color: {COLORS['text']};
+    }}
+
+    /* Cards de KPI Customizados */
+    [data-testid="stMetric"] {{
+        background-color: {COLORS['card']};
+        padding: 20px;
+        border-radius: 12px;
+        border-left: 5px solid {COLORS['primary']};
+        box-shadow: 0 4px 15px {'rgba(0,0,0,0.3)' if st.session_state.tema_escuro else 'rgba(0,0,0,0.1)'};
+    }}
+
+    [data-testid="stMetricValue"] {{
+        color: {COLORS['text']};
+        font-size: 2rem;
+        font-weight: 700;
+    }}
+
+    [data-testid="stMetricLabel"] {{
+        color: {COLORS['text_secondary']};
+        font-weight: 600;
+    }}
+
+    /* Container de KPIs com scroll horizontal para telas menores */
+    div[data-testid="column"] {{
+        min-width: 150px !important;
+    }}
+
+    /* Forçar scroll horizontal no container de métricas */
+    .element-container:has([data-testid="stMetric"]) {{
+        min-width: 150px;
+    }}
+
+    /* Wrapper customizado para KPIs */
+    .kpi-scroll-wrapper {{
+        overflow-x: auto;
+        overflow-y: hidden;
+        display: flex;
+        gap: 15px;
+        padding: 10px 5px;
+        margin-bottom: 20px;
+        -webkit-overflow-scrolling: touch;
+    }}
+
+    .kpi-scroll-wrapper::-webkit-scrollbar {{
+        height: 10px;
+    }}
+
+    .kpi-scroll-wrapper::-webkit-scrollbar-track {{
+        background: {COLORS['card']};
+        border-radius: 10px;
+    }}
+
+    .kpi-scroll-wrapper::-webkit-scrollbar-thumb {{
+        background: {COLORS['primary']};
+        border-radius: 10px;
+    }}
+
+    .kpi-scroll-wrapper::-webkit-scrollbar-thumb:hover {{
+        background: {COLORS['text_secondary']};
+    }}
+
+    /* Garantir que os cards de métrica não quebrem */
+    [data-testid="stMetric"] {{
+        flex-shrink: 0;
+        min-width: 140px;
+        white-space: nowrap;
+    }}
+
+    /* Botões Grandes de Seleção de Área (Home) */
+    .stButton>button {{
+        background: {COLORS['card']};
+        color: {COLORS['text']};
+        border-radius: 12px;
+        height: 70px;
+        font-size: 15px;
+        font-weight: 600;
+        border: 2px solid {COLORS['border']};
+        transition: all 0.3s ease;
+    }}
+    .stButton>button:hover {{
+        border-color: {COLORS['primary']};
+        color: {COLORS['primary']};
+        transform: translateY(-3px);
+        box-shadow: 0 8px 16px rgba(243, 140, 50, 0.3);
+    }}
+
+    /* Barra de Deploy/Status do Streamlit - Modo Dark */
+    .stDeployButton {{
+        background-color: {COLORS['card']} !important;
+        color: {COLORS['text']} !important;
+    }}
+
+    .stStatusWidget {{
+        background-color: {COLORS['card']} !important;
+    }}
+
+    [data-testid="stStatusWidget"] {{
+        background-color: {COLORS['card']} !important;
+        color: {COLORS['text']} !important;
+    }}
+
+    /* App header e toolbar */
+    header[data-testid="stHeader"] {{
+        background-color: {COLORS['background']} !important;
+    }}
+
+    .stApp > header {{
+        background-color: {COLORS['background']} !important;
+    }}
+
+    /* Elementos do toolbar */
+    [data-testid="stToolbar"] {{
+        background-color: {COLORS['card']} !important;
+    }}
+
+    [data-testid="stToolbar"] button {{
+        color: {COLORS['text']} !important;
+    }}
+
+    /* Botão de Download - Estilo Escuro com Laranja */
+    .stDownloadButton {{
+        width: 100%;
+    }}
+
+    .stDownloadButton > button {{
+        background-color: {COLORS['card']} !important;
+        color: {COLORS['primary']} !important;
+        border: 2px solid {COLORS['primary']} !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        padding: 12px 24px !important;
+        transition: all 0.3s ease !important;
+        width: 100%;
+    }}
+
+    .stDownloadButton > button:hover {{
+        background-color: {COLORS['primary']} !important;
+        color: {COLORS['card']} !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 6px 12px rgba(239, 125, 30, 0.4) !important;
+    }}
+
+    .stDownloadButton > button:active {{
+        transform: translateY(0px) !important;
+    }}
+
+
+    /* Sidebar */
+    [data-testid="stSidebar"] {{
+        background-color: {COLORS['sidebar']};
+    }}
+
+    [data-testid="stSidebar"] * {{
+        color: {COLORS['text']};
+    }}
+
+    /* Reduzir espaçamento na sidebar */
+    [data-testid="stSidebar"] .element-container {{
+        margin-bottom: 0.5rem;
+    }}
+
+    [data-testid="stSidebar"] .stMarkdown {{
+        margin-bottom: 0.3rem;
+    }}
+
+    [data-testid="stSidebar"] .stMultiSelect {{
+        margin-bottom: 0.5rem;
+    }}
+
+    [data-testid="stSidebar"] .stDateInput {{
+        margin-bottom: 0.5rem;
+    }}
+
+    [data-testid="stSidebar"] .stButton {{
+        margin-bottom: 0.5rem;
+    }}
+
+    /* Inputs e Selects - Modo Escuro/Claro */
+    .stMultiSelect {{
+        color: {COLORS['text']};
+    }}
+
+    .stMultiSelect > div {{
+        background-color: {COLORS['card']} !important;
+    }}
+
+    .stMultiSelect input {{
+        background-color: {COLORS['card']} !important;
+        color: {COLORS['text']} !important;
+    }}
+
+    .stMultiSelect [data-baseweb="select"] {{
+        background-color: {COLORS['card']} !important;
+    }}
+
+    .stMultiSelect [data-baseweb="select"] > div {{
+        background-color: {COLORS['card']} !important;
+        color: {COLORS['text']} !important;
+        border-color: {COLORS['border']} !important;
+    }}
+
+    /* Date Input */
+    .stDateInput {{
+        color: {COLORS['text']};
+    }}
+
+    .stDateInput > div > div {{
+        background-color: {COLORS['card']} !important;
+        color: {COLORS['text']} !important;
+    }}
+
+    .stDateInput input {{
+        background-color: {COLORS['card']} !important;
+        color: {COLORS['text']} !important;
+        border-color: {COLORS['border']} !important;
+    }}
+
+    /* Text Input */
+    .stTextInput > div > div {{
+        background-color: {COLORS['card']} !important;
+        color: {COLORS['text']} !important;
+    }}
+
+    .stTextInput input {{
+        background-color: {COLORS['card']} !important;
+        color: {COLORS['text']} !important;
+        border-color: {COLORS['border']} !important;
+    }}
+
+    /* Number Input */
+    .stNumberInput > div > div {{
+        background-color: {COLORS['card']} !important;
+        color: {COLORS['text']} !important;
+    }}
+
+    .stNumberInput input {{
+        background-color: {COLORS['card']} !important;
+        color: {COLORS['text']} !important;
+        border-color: {COLORS['border']} !important;
+    }}
+
+    /* Select Box */
+    .stSelectbox > div > div {{
+        background-color: {COLORS['card']} !important;
+        color: {COLORS['text']} !important;
+    }}
+
+    .stSelectbox [data-baseweb="select"] > div {{
+        background-color: {COLORS['card']} !important;
+        color: {COLORS['text']} !important;
+        border-color: {COLORS['border']} !important;
+    }}
+
+    /* Dropdown menus */
+    [data-baseweb="popover"] {{
+        background-color: {COLORS['card']} !important;
+    }}
+
+    [role="listbox"] {{
+        background-color: {COLORS['card']} !important;
+    }}
+
+    [role="option"] {{
+        background-color: {COLORS['card']} !important;
+        color: {COLORS['text']} !important;
+    }}
+
+    [role="option"]:hover {{
+        background-color: {COLORS['primary']} !important;
+        color: white !important;
+    }}
+
+    /* Headers */
+    h1, h2, h3, h4, h5, h6 {{
+        color: {COLORS['text']} !important;
+    }}
+
+    /* Expander */
+    .streamlit-expanderHeader {{
+        background-color: {COLORS['card']};
+        color: {COLORS['text']};
+    }}
+
+    /* Logo OSAC com círculo e borda laranja */
+    .logo-circle {{
+        border-radius: 50%;
+        border: 2px solid {COLORS['primary']};
+        padding: 5px;
+        background-color: {COLORS['card']};
+        display: inline-block;
+        box-shadow: 0 2px 8px rgba(239, 125, 30, 0.3);
+    }}
+
+    .logo-circle img {{
+        border-radius: 50%;
+        display: block;
+    }}
+
+    /* Centralizar logo na sidebar */
+    .logo-sidebar-center {{
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-bottom: 5px;
+    }}
+
+    </style>
+""", unsafe_allow_html=True)
+
+# --- DICIONÁRIO DE MAPEAMENTO CORPORATIVO ---
+AREAS_MAP = {
+    'bko': 'BackOffice',
+    'ctb': 'Contabilidade',
+    'fcs': 'Facilities',
+    'fin': 'Financeiro',
+    'i3d': 'Impressão 3D',
+    'mnt': 'Manutenção',
+    'nex': 'Núcleo de Excelência',
+    'npe': 'Núcleo de Pessoas',
+    'sti': 'Tecnologia',
+    'jur': 'Setor Jurídico',
+    'nia': 'Núcleo de IA',
+    'nti': 'Núcleo de TI',
+    'sup': 'Suprimentos'
+}
+
+# --- FUNÇÃO DE CONSUMO DA API ---
+@st.cache_data(ttl=300) # Mantém os dados em cache por 5 minutos para performance
+def fetch_data():
+    api_url = os.getenv('API_URL', 'https://integra.odilonsantos.com/api/Bpms/tabentregaveisprod')
+    api_token = os.getenv('API_TOKEN', '')
+
+    # Debug: mostrar se as variáveis foram carregadas
+    print(f"DEBUG - API_URL: {api_url}")
+    print(f"DEBUG - API_TOKEN carregado: {'Sim' if api_token else 'Não'}")
+
+    headers = {'Authorization': f'Bearer {api_token}'} if api_token else {}
+
+    try:
+        print(f"DEBUG - Fazendo requisição para: {api_url}")
+        response = requests.get(api_url, headers=headers, timeout=15)
+
+        print(f"DEBUG - Status Code: {response.status_code}")
+        print(f"DEBUG - Response Headers: {response.headers}")
+
+        if response.status_code == 200:
+            json_data = response.json()
+            print(f"DEBUG - Tipo de resposta: {type(json_data)}")
+            print(f"DEBUG - Keys na resposta: {json_data.keys() if isinstance(json_data, dict) else 'Lista direta'}")
+
+            # Tentar diferentes estruturas de retorno
+            if isinstance(json_data, dict):
+                # Tenta pegar de 'data' primeiro
+                data = json_data.get('data', [])
+                if not data:
+                    # Se não tiver 'data', tenta outras chaves comuns
+                    data = json_data.get('results', json_data.get('items', []))
+                print(f"DEBUG - Total de registros encontrados: {len(data)}")
+                return data
+            elif isinstance(json_data, list):
+                print(f"DEBUG - Total de registros encontrados (lista direta): {len(json_data)}")
+                return json_data
+            else:
+                print(f"DEBUG - Estrutura inesperada: {json_data}")
+                st.error(f"Estrutura de dados inesperada da API: {type(json_data)}")
+                return []
+        else:
+            error_msg = f"Erro na API: Código de Status {response.status_code}"
+            print(f"DEBUG - {error_msg}")
+            print(f"DEBUG - Response Text: {response.text[:500]}")  # Primeiros 500 caracteres
+            st.error(error_msg)
+            return []
+    except Exception as e:
+        error_msg = f"Falha na conexão com a API: {e}"
+        print(f"DEBUG - {error_msg}")
+        st.error(error_msg)
+        return []
+
+# --- TRATAMENTO E FILTRAGEM DOS DADOS ---
+def process_data(raw_data):
+    if not raw_data:
+        print("DEBUG - Nenhum dado bruto recebido")
+        return pd.DataFrame()
+
+    print(f"DEBUG - Processando {len(raw_data)} registros")
+    print(f"DEBUG - Primeiro registro: {raw_data[0] if raw_data else 'Vazio'}")
+
+    df = pd.DataFrame(raw_data)
+    print(f"DEBUG - Colunas do DataFrame: {df.columns.tolist()}")
+    print(f"DEBUG - Shape inicial: {df.shape}")
+
+    # REGRA CRÍTICA: Apresentar APENAS dados onde em_producao é True
+    if 'em_producao' in df.columns:
+        print(f"DEBUG - Registros antes do filtro em_producao: {len(df)}")
+        df = df[df['em_producao'] == True].copy()
+        print(f"DEBUG - Registros após filtro em_producao: {len(df)}")
+    else:
+        print("DEBUG - ATENÇÃO: Coluna 'em_producao' não encontrada!")
+        print(f"DEBUG - Colunas disponíveis: {df.columns.tolist()}")
+        # Se não tiver a coluna, vamos mostrar todos os dados mesmo assim
+        # return pd.DataFrame() # Comentado para debug
+
+    if df.empty:
+        print("DEBUG - DataFrame vazio após filtros")
+        return df
+
+    # Identificação da Área pela sigla do processo (ex: 'ctb-Apurar' -> 'ctb')
+    if 'nome_processo' in df.columns:
+        df['sigla'] = df['nome_processo'].str.split('-').str[0].str.lower()
+        df['area_nome'] = df['sigla'].map(AREAS_MAP).fillna('Outros')
+        print(f"DEBUG - Áreas identificadas: {df['area_nome'].unique()}")
+    else:
+        print("DEBUG - ATENÇÃO: Coluna 'nome_processo' não encontrada!")
+        df['area_nome'] = 'Outros'
+
+    # Tratamento de Tipos e Datas
+    if 'data_inicio' in df.columns:
+        df['data_inicio_dt'] = pd.to_datetime(df['data_inicio'], errors='coerce').dt.tz_localize(None)
+
+    if 'resultado_entregue' in df.columns:
+        df['resultado_entregue'] = pd.to_numeric(df['resultado_entregue'], errors='coerce').fillna(0)
+
+    print(f"DEBUG - DataFrame final shape: {df.shape}")
+    return df
+
+# --- CONTROLADOR DE NAVEGAÇÃO (ESTADO) ---
+if 'area_atual' not in st.session_state:
+    st.session_state.area_atual = None
+
+# ==========================================
+# TELA 1: HOME (GRID DE SELEÇÃO DE ÁREAS)
+# ==========================================
+if st.session_state.area_atual is None:
+    # Logo e cabeçalho
+    col_logo, col_title, col_theme = st.columns([1, 5, 1])
+    with col_logo:
+        st.markdown('''
+            <div class="logo-circle">
+                <img src="data:image/jpeg;base64,{}" width="80">
+            </div>
+        '''.format(__import__('base64').b64encode(open('assets/osac.jpg', 'rb').read()).decode()), unsafe_allow_html=True)
+    with col_title:
+        st.markdown(f"<h1 style='color:{COLORS['primary']}; margin-bottom:10px; margin-top:10px;'>Sensor de Eficiência RPA</h1>", unsafe_allow_html=True)
+    with col_theme:
+        tema_icon = "☀️" if st.session_state.tema_escuro else "🌙"
+        tema_label = "Claro" if st.session_state.tema_escuro else "Escuro"
+        if st.button(f"{tema_icon} {tema_label}", use_container_width=True, key="toggle_theme_home"):
+            st.session_state.tema_escuro = not st.session_state.tema_escuro
+            st.rerun()
+
+    st.markdown(f"<p style='text-align:center; font-size:18px; color:{COLORS['text_secondary']};'>Selecione a área para monitorar a saúde e a qualidade das entregas</p>", unsafe_allow_html=True)
+    st.write("---")
+
+    # Carregar dados para mostrar contagem por área
+    dados_brutos = fetch_data()
+    df_rpa = process_data(dados_brutos)
+
+    # Contar execuções por área
+    contagem_por_area = {}
+    if not df_rpa.empty and 'area_nome' in df_rpa.columns:
+        contagem_por_area = df_rpa['area_nome'].value_counts().to_dict()
+
+    # Criação do Grid 4x3 para os botões das áreas
+    cols = st.columns(3)
+    for idx, (sigla, nome_area) in enumerate(AREAS_MAP.items()):
+        with cols[idx % 3]:
+            # Pegar a contagem de execuções para esta área
+            qtd_execucoes = contagem_por_area.get(nome_area, 0)
+            label = f"{nome_area} ({qtd_execucoes})"
+
+            if st.button(label, use_container_width=True, key=f"btn_{sigla}"):
+                st.session_state.area_atual = nome_area
+                st.rerun()
+
+# ==========================================
+# TELA 2: DASHBOARD DETALHADO DA ÁREA
+# ==========================================
+else:
+    # Carrega e processa os dados da API
+    dados_brutos = fetch_data()
+    df_rpa = process_data(dados_brutos)
+
+    # Filtra os dados pertencentes estritamente à área selecionada
+    df_area = df_rpa[df_rpa['area_nome'] == st.session_state.area_atual] if not df_rpa.empty else pd.DataFrame()
+
+    # Cabeçalho do Dashboard da Área
+    head_left, head_mid, head_right = st.columns([4, 1, 1])
+    head_left.title(f"Gestão de Entregáveis — {st.session_state.area_atual}")
+
+    with head_mid:
+        tema_icon = "☀️" if st.session_state.tema_escuro else "🌙"
+        tema_label = "Claro" if st.session_state.tema_escuro else "Escuro"
+        if st.button(f"{tema_icon} {tema_label}", use_container_width=True, key="toggle_theme_dashboard"):
+            st.session_state.tema_escuro = not st.session_state.tema_escuro
+            st.rerun()
+
+    if head_right.button("Voltar", use_container_width=True):
+        st.session_state.area_atual = None
+        st.rerun()
+
+    st.write("---")
+
+    if df_area.empty:
+        st.warning(f"Nenhum processo em produção encontrado para a área {st.session_state.area_atual} no momento.")
+
+        # Debug info para ajudar a diagnosticar
+        with st.expander("🔍 Informações de Debug"):
+            st.write(f"Total de registros carregados: {len(df_rpa)}")
+            if not df_rpa.empty:
+                st.write(f"Áreas disponíveis: {df_rpa['area_nome'].unique().tolist()}")
+                st.write(f"Total por área:")
+                st.write(df_rpa['area_nome'].value_counts())
+    else:
+        # --- CONFIGURAÇÃO DA SIDEBAR (FILTROS) ---
+        with st.sidebar:
+            # Logo OSAC na sidebar - Centralizada
+            st.markdown('''
+                <div class="logo-sidebar-center">
+                    <div class="logo-circle">
+                        <img src="data:image/jpeg;base64,{}" width="50">
+                    </div>
+                </div>
+            '''.format(__import__('base64').b64encode(open('assets/osac.jpg', 'rb').read()).decode()), unsafe_allow_html=True)
+
+            # Título do Painel e Área Atual
+            st.markdown(f"<h2 style='color:{COLORS['primary']}; text-align:center; margin-top:5px; margin-bottom:3px;'>Gestão de Entregáveis</h2>", unsafe_allow_html=True)
+            st.markdown(f"<h3 style='color:{COLORS['text']}; text-align:center; margin-top:0px; margin-bottom:8px;'>{st.session_state.area_atual}</h3>", unsafe_allow_html=True)
+
+            st.markdown(f"<h4 style='color:{COLORS['primary']}; margin-top:3px; margin-bottom:8px;'>Filtros</h4>", unsafe_allow_html=True)
+
+            # Botão de atualizar dados
+            if st.button("🔄 Atualizar", use_container_width=True, key="refresh_data"):
+                st.cache_data.clear()
+                st.rerun()
+
+            # Filtro 1: Seleção de Fluxo (Multiselect)
+            lista_processos = sorted(df_area['nome_processo'].unique())
+            fluxos_selecionados = st.multiselect(
+                "Fluxo / Processo",
+                options=lista_processos,
+                placeholder="Todos"
+            )
+
+            # Filtro 2: Tipo de Fluxo
+            if 'tipo_fluxo' in df_area.columns:
+                lista_tipos = sorted(df_area['tipo_fluxo'].unique())
+                tipos_selecionados = st.multiselect(
+                    "Tipo de Fluxo",
+                    options=lista_tipos,
+                    placeholder="Todos"
+                )
+            else:
+                tipos_selecionados = []
+
+            # Filtro 3: Seleção de Status
+            if 'status' in df_area.columns:
+                lista_status = sorted(df_area['status'].unique())
+                status_selecionados = st.multiselect(
+                    "Status",
+                    options=lista_status,
+                    placeholder="Todos"
+                )
+            else:
+                status_selecionados = []
+
+            # Filtro 4: Intervalo de Datas
+            if 'data_inicio_dt' in df_area.columns and not df_area['data_inicio_dt'].isna().all():
+                data_minima = df_area['data_inicio_dt'].min().date()
+                data_maxima = df_area['data_inicio_dt'].max().date()
+
+                periodo = st.date_input(
+                    "Período",
+                    [data_minima, data_maxima],
+                    min_value=data_minima,
+                    max_value=data_maxima,
+                    format="DD/MM/YYYY"
+                )
+            else:
+                periodo = None
+
+            st.markdown(f"<h4 style='color:{COLORS['primary']}; margin-top:10px; margin-bottom:8px;'>Relatório</h4>", unsafe_allow_html=True)
+
+        # --- APLICAÇÃO DOS FILTROS NO DATAFRAME ---
+        df_filtrado = df_area.copy()
+
+        if fluxos_selecionados:
+            df_filtrado = df_filtrado[df_filtrado['nome_processo'].isin(fluxos_selecionados)]
+
+        if tipos_selecionados and 'tipo_fluxo' in df_filtrado.columns:
+            df_filtrado = df_filtrado[df_filtrado['tipo_fluxo'].isin(tipos_selecionados)]
+
+        if status_selecionados and 'status' in df_filtrado.columns:
+            df_filtrado = df_filtrado[df_filtrado['status'].isin(status_selecionados)]
+
+        if periodo and 'data_inicio_dt' in df_filtrado.columns:
+            if isinstance(periodo, list) or isinstance(periodo, tuple):
+                if len(periodo) == 2:
+                    df_filtrado = df_filtrado[(df_filtrado['data_inicio_dt'].dt.date >= periodo[0]) &
+                                              (df_filtrado['data_inicio_dt'].dt.date <= periodo[1])]
+
+        # --- MÉTRICAS E CARDS (KPIs) ---
+        total_disparos = len(df_filtrado)
+
+        # Verificar se a coluna status existe
+        if 'status' in df_filtrado.columns:
+            exec_concluidas = len(df_filtrado[df_filtrado['status'].str.lower() == 'concluído'])
+        else:
+            exec_concluidas = 0
+
+        # Cálculo da Saúde (Health Score)
+        health_score = (exec_concluidas / total_disparos * 100) if total_disparos > 0 else 0
+
+        # Cálculo do Volume Baseado no 'resultado_entregue'
+        volume_entregue = df_filtrado['resultado_entregue'].sum() if 'resultado_entregue' in df_filtrado.columns else 0
+
+        # Cálculo do % Atingimento (resultado_entregue vs resultado_esperado)
+        resultado_esperado_total = df_filtrado['resultado_esperado'].sum() if 'resultado_esperado' in df_filtrado.columns else 0
+        resultado_entregue_total = df_filtrado['resultado_entregue'].sum() if 'resultado_entregue' in df_filtrado.columns else 0
+        percentual_atingimento = (resultado_entregue_total / resultado_esperado_total * 100) if resultado_esperado_total > 0 else 0
+
+        # Formatar números com separador de milhar brasileiro
+        volume_fmt = f"{int(volume_entregue):,}".replace(",", ".")
+        esperado_fmt = f"{int(resultado_esperado_total):,}".replace(",", ".")
+        entregue_fmt = f"{int(resultado_entregue_total):,}".replace(",", ".")
+
+        # Container com scroll horizontal para KPIs usando HTML puro
+        st.markdown(f"""
+        <div class="kpi-scroll-wrapper">
+            <div style="background-color: {COLORS['card']}; padding: 20px; border-radius: 12px; border-left: 5px solid {COLORS['primary']}; box-shadow: 0 4px 15px {'rgba(0,0,0,0.3)' if st.session_state.tema_escuro else 'rgba(0,0,0,0.1)'}; min-width: 150px;">
+                <div style="color: {COLORS['text_secondary']}; font-weight: 600; font-size: 14px;">Total de Disparos</div>
+                <div style="color: {COLORS['text']}; font-size: 2rem; font-weight: 700;">{total_disparos}</div>
+            </div>
+            <div style="background-color: {COLORS['card']}; padding: 20px; border-radius: 12px; border-left: 5px solid {COLORS['primary']}; box-shadow: 0 4px 15px {'rgba(0,0,0,0.3)' if st.session_state.tema_escuro else 'rgba(0,0,0,0.1)'}; min-width: 150px;">
+                <div style="color: {COLORS['text_secondary']}; font-weight: 600; font-size: 14px;">Volume ({st.session_state.area_atual})</div>
+                <div style="color: {COLORS['text']}; font-size: 2rem; font-weight: 700;">{volume_fmt}</div>
+            </div>
+            <div style="background-color: {COLORS['card']}; padding: 20px; border-radius: 12px; border-left: 5px solid {COLORS['primary']}; box-shadow: 0 4px 15px {'rgba(0,0,0,0.3)' if st.session_state.tema_escuro else 'rgba(0,0,0,0.1)'}; min-width: 150px;">
+                <div style="color: {COLORS['text_secondary']}; font-weight: 600; font-size: 14px;">Health Score</div>
+                <div style="color: {COLORS['text']}; font-size: 2rem; font-weight: 700;">{health_score:.1f}%</div>
+            </div>
+            <div style="background-color: {COLORS['card']}; padding: 20px; border-radius: 12px; border-left: 5px solid {COLORS['primary']}; box-shadow: 0 4px 15px {'rgba(0,0,0,0.3)' if st.session_state.tema_escuro else 'rgba(0,0,0,0.1)'}; min-width: 150px;">
+                <div style="color: {COLORS['text_secondary']}; font-weight: 600; font-size: 14px;">% Atingimento</div>
+                <div style="color: {COLORS['text']}; font-size: 2rem; font-weight: 700;">{percentual_atingimento:.1f}%</div>
+            </div>
+            <div style="background-color: {COLORS['card']}; padding: 20px; border-radius: 12px; border-left: 5px solid {COLORS['primary']}; box-shadow: 0 4px 15px {'rgba(0,0,0,0.3)' if st.session_state.tema_escuro else 'rgba(0,0,0,0.1)'}; min-width: 150px;">
+                <div style="color: {COLORS['text_secondary']}; font-weight: 600; font-size: 14px;">Esperado</div>
+                <div style="color: {COLORS['text']}; font-size: 2rem; font-weight: 700;">{esperado_fmt}</div>
+            </div>
+            <div style="background-color: {COLORS['card']}; padding: 20px; border-radius: 12px; border-left: 5px solid {COLORS['primary']}; box-shadow: 0 4px 15px {'rgba(0,0,0,0.3)' if st.session_state.tema_escuro else 'rgba(0,0,0,0.1)'}; min-width: 150px;">
+                <div style="color: {COLORS['text_secondary']}; font-weight: 600; font-size: 14px;">Entregue</div>
+                <div style="color: {COLORS['text']}; font-size: 2rem; font-weight: 700;">{entregue_fmt}</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.write("##")
+
+        # --- GRÁFICO ESPERADO VS ENTREGUE ---
+        st.markdown(f"<h4 style='color:{COLORS['primary']};'>Comparação: Esperado vs Entregue por Processo</h4>", unsafe_allow_html=True)
+
+        if 'nome_processo' in df_filtrado.columns and 'resultado_esperado' in df_filtrado.columns and 'resultado_entregue' in df_filtrado.columns:
+            # Agrupar por processo
+            df_comparacao = df_filtrado.groupby('nome_processo').agg({
+                'resultado_esperado': 'sum',
+                'resultado_entregue': 'sum'
+            }).reset_index()
+
+            # Ordenar por resultado esperado - MOSTRAR TODOS OS FLUXOS
+            df_comparacao = df_comparacao.sort_values(by='resultado_esperado', ascending=True)
+
+            # Mostrar todos os processos da área (não limitando a top 10)
+            df_comparacao_top = df_comparacao
+
+            # Criar gráfico de barras agrupadas
+            fig_comparacao = go.Figure()
+
+            fig_comparacao.add_trace(go.Bar(
+                y=df_comparacao_top['nome_processo'],
+                x=df_comparacao_top['resultado_esperado'],
+                name='Esperado',
+                orientation='h',
+                marker_color=COLORS['info'],
+                text=df_comparacao_top['resultado_esperado'],
+                textposition='outside',
+                textfont=dict(size=22, color=COLORS['text']),
+                width=0.35,
+            ))
+
+            fig_comparacao.add_trace(go.Bar(
+                y=df_comparacao_top['nome_processo'],
+                x=df_comparacao_top['resultado_entregue'],
+                name='Entregue',
+                orientation='h',
+                marker_color=COLORS['success'],
+                text=df_comparacao_top['resultado_entregue'],
+                textposition='outside',
+                textfont=dict(size=22, color=COLORS['text']),
+                width=0.35,
+            ))
+
+            # Calcular altura dinâmica baseada no número de processos
+            altura_grafico = max(500, len(df_comparacao_top) * 60)
+
+            fig_comparacao.update_layout(
+                barmode='group',
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                font=dict(color=COLORS['text'], size=16),
+                xaxis_title="Quantidade",
+                yaxis_title="",
+                margin=dict(t=20, b=20, l=10, r=10),
+                height=altura_grafico,
+                bargap=0.3,
+                xaxis=dict(
+                    titlefont=dict(color=COLORS['text'], size=20),
+                    tickfont=dict(color=COLORS['text'], size=18)
+                ),
+                yaxis=dict(
+                    tickfont=dict(color=COLORS['text'], size=18)
+                ),
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1,
+                    font=dict(color=COLORS['text'], size=18)
+                )
+            )
+
+            st.plotly_chart(fig_comparacao, use_container_width=True)
+
+        # --- GRÁFICO DE SAÚDE E QUALIDADE ---
+        st.write("##")
+        st.markdown(f"<h4 style='color:{COLORS['primary']};'>Saúde e Qualidade de Entrega</h4>", unsafe_allow_html=True)
+        falhas = total_disparos - exec_concluidas
+
+        fig_donut = go.Figure(go.Pie(
+            labels=['Sucesso (Concluído)', 'Falhas/Atenção'],
+            values=[exec_concluidas, falhas],
+            hole=.65,
+            marker_colors=[COLORS['success'], COLORS['error']]
+        ))
+        fig_donut.update_layout(
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            font=dict(color=COLORS['text'], size=13),
+            showlegend=True,
+            margin=dict(t=30, b=10, l=10, r=10),
+            height=350,
+            legend=dict(
+                font=dict(color=COLORS['text'], size=13)
+            )
+        )
+        st.plotly_chart(fig_donut, use_container_width=True)
+
+        # --- TABELA DE AUDITORIA E DOWNLOAD EXCEL ---
+        st.write("---")
+        st.markdown(f"<h3 style='color:{COLORS['primary']};'>Detalhamento das Execuções</h3>", unsafe_allow_html=True)
+
+        # Criar cópia para manipulação
+        df_tabela = df_filtrado.copy()
+
+        # Ordenar por data mais recente
+        if 'data_inicio_dt' in df_tabela.columns:
+            df_tabela = df_tabela.sort_values(by='data_inicio_dt', ascending=False)
+
+        # Selecionar colunas para exibição (sem frequencia_disparo)
+        df_exibir = df_tabela[[
+            'nome_processo',
+            'horarios_disparo',
+            'tipo_fluxo',
+            'data_inicio',
+            'data_fim',
+            'duracao',
+            'status',
+            'erros'
+        ]].copy()
+
+        # Formatar datas para dd/MM/yyyy HH:mm:ss
+        df_exibir['data_inicio'] = pd.to_datetime(df_exibir['data_inicio'], errors='coerce').dt.strftime('%d/%m/%Y %H:%M:%S')
+        df_exibir['data_fim'] = pd.to_datetime(df_exibir['data_fim'], errors='coerce').dt.strftime('%d/%m/%Y %H:%M:%S')
+
+        # Renomear colunas
+        df_exibir = df_exibir.rename(columns={
+            'nome_processo': 'Processo',
+            'horarios_disparo': 'Horário',
+            'tipo_fluxo': 'Tipo Fluxo',
+            'data_inicio': 'Data Início',
+            'data_fim': 'Data Fim',
+            'duracao': 'Duração',
+            'status': 'Status',
+            'erros': 'Erros'
+        })
+
+        # Resetar index para mostrar numeração
+        df_exibir = df_exibir.reset_index(drop=True)
+        df_exibir.index = df_exibir.index + 1  # Começar de 1 ao invés de 0
+
+        # Exibir a tabela com index visível
+        st.dataframe(df_exibir, use_container_width=True, height=400)
+
+        st.caption(f"Total de {len(df_exibir)} execuções exibidas")
+
+        # Função para geração de download do Excel na Sidebar (apenas se houver dados filtrados)
+        if not df_filtrado.empty:
+            with st.sidebar:
+                # Remove colunas auxiliares internas antes de mandar para o Excel do usuário
+                df_excel = df_filtrado.drop(columns=['sigla', 'area_nome', 'data_inicio_dt'], errors='ignore')
+
+                # Criação do arquivo Excel binário em memória para o Streamlit injetar no browser
+                import io
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                    df_excel.to_excel(writer, index=False, sheet_name='Entregas RPA')
+
+                st.download_button(
+                    label="📥 Baixar Relatório Excel",
+                    data=buffer.getvalue(),
+                    file_name=f"RPA_{st.session_state.area_atual.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )

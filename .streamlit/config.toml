@@ -1,0 +1,15 @@
+[theme]
+primaryColor = "#EF7D1E"
+backgroundColor = "#0A0A0A"
+secondaryBackgroundColor = "#1A1A1A"
+textColor = "#FFFFFF"
+font = "sans serif"
+
+[server]
+port = 8501
+headless = true
+enableCORS = false
+enableXsrfProtection = true
+
+[client]
+toolbarMode = "viewer"
