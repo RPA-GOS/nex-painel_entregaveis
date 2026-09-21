@@ -6,11 +6,7 @@ Transforma dados brutos em informações úteis para o dashboard.
 import pandas as pd
 from typing import List, Dict, Any
 from models.kpi import KPI
-<<<<<<< HEAD
-from utils.constants import AREAS_MAP, TIPO_FALHA_MAP, TIPO_FALHA_NAO_CLASSIFICADO
-=======
-from utils.constants import AREAS_MAP, ERRO_VERBA_INSUFICIENTE
->>>>>>> 261c7aade5d77726da687a9bd69ee2c71f787d74
+from utils.constants import AREAS_MAP, TIPO_FALHA_MAP, TIPO_FALHA_NAO_CLASSIFICADO, ERRO_VERBA_INSUFICIENTE
 
 
 class DataService:

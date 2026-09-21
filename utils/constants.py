@@ -50,7 +50,6 @@ COLORS_LIGHT = {
 CACHE_TTL_SECONDS = 300
 REQUEST_TIMEOUT_SECONDS = 15
 
-<<<<<<< HEAD
 TIPO_FALHA_MAP = {
     'S': 'Indisponibilidade de Sistema',
     'H': 'Falha Humana',
@@ -64,6 +63,5 @@ FAILURE_COLORS = {
     'Falha de Desenvolvimento': '#9B59B6',
     'Não Classificado': '#7F8C8D',
 }
-=======
+
 ERRO_VERBA_INSUFICIENTE = 'Verba insuficiente'
->>>>>>> 261c7aade5d77726da687a9bd69ee2c71f787d74

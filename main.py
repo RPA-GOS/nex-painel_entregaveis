@@ -17,13 +17,8 @@ from utils.ui_components import (
     render_logo_centered,
     render_kpi_cards,
     render_comparison_chart,
-<<<<<<< HEAD
     render_health_donut,
     render_failure_breakdown
-=======
-    render_verba_insuficiente_section,
-    render_health_donut
->>>>>>> 261c7aade5d77726da687a9bd69ee2c71f787d74
 )
 
 setup_locale()
@@ -244,9 +239,6 @@ def render_dashboard_screen():
     )
     df_comparacao = controller.prepare_comparison_chart_data(df_filtrado)
     render_comparison_chart(df_comparacao, COLORS)
-
-    df_verba = controller.get_verba_insuficiente_data(df_filtrado)
-    render_verba_insuficiente_section(df_verba, COLORS)
 
     st.write("##")
     col_saude, col_falhas = st.columns(2)
