@@ -78,6 +78,63 @@ def test_calculate_kpis():
     print("✅ Cálculo de KPIs: OK")
 
 
+def test_identify_failure_type():
+    """Testa tradução do tipo_falha (S/H/P) e marcação de não classificados"""
+    raw_data = [
+        {
+            'nome_processo': 'sti-Processo A',
+            'em_producao': True,
+            'status': 'Falha',
+            'tipo_falha': 'S',
+        },
+        {
+            'nome_processo': 'sti-Processo B',
+            'em_producao': True,
+            'status': 'Falha',
+            'tipo_falha': 'H',
+        },
+        {
+            'nome_processo': 'sti-Processo C',
+            'em_producao': True,
+            'status': 'Falha',
+            'tipo_falha': None,
+        },
+        {
+            'nome_processo': 'sti-Processo D',
+            'em_producao': True,
+            'status': 'Concluído',
+            'tipo_falha': None,
+        },
+    ]
+
+    service = DataService()
+    df = service.process_raw_data(raw_data)
+
+    assert df.loc[df['nome_processo'] == 'sti-Processo A', 'tipo_falha_desc'].iloc[0] == 'Indisponibilidade de Sistema'
+    assert df.loc[df['nome_processo'] == 'sti-Processo B', 'tipo_falha_desc'].iloc[0] == 'Falha Humana'
+    assert df.loc[df['nome_processo'] == 'sti-Processo C', 'tipo_falha_desc'].iloc[0] == 'Não Classificado'
+    assert pd.isna(df.loc[df['nome_processo'] == 'sti-Processo D', 'tipo_falha_desc'].iloc[0])
+
+    print("✅ Identificação de tipo de falha: OK")
+
+
+def test_get_failure_breakdown():
+    """Testa contagem de falhas agrupadas por tipo"""
+    data = {
+        'status': ['Falha', 'Falha', 'Falha', 'Concluído'],
+        'tipo_falha_desc': ['Indisponibilidade de Sistema', 'Falha Humana', 'Falha Humana', None],
+    }
+    df = pd.DataFrame(data)
+
+    service = DataService()
+    breakdown = service.get_failure_breakdown(df)
+
+    contagem = dict(zip(breakdown['tipo_falha_desc'], breakdown['quantidade']))
+    assert contagem == {'Indisponibilidade de Sistema': 1, 'Falha Humana': 2}
+
+    print("✅ Contagem de falhas por tipo: OK")
+
+
 def test_filter_by_area():
     """Testa filtragem por área"""
     data = {

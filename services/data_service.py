@@ -6,7 +6,7 @@ Transforma dados brutos em informações úteis para o dashboard.
 import pandas as pd
 from typing import List, Dict, Any
 from models.kpi import KPI
-from utils.constants import AREAS_MAP
+from utils.constants import AREAS_MAP, TIPO_FALHA_MAP, TIPO_FALHA_NAO_CLASSIFICADO
 
 
 class DataService:
@@ -36,6 +36,7 @@ class DataService:
         df = DataService._identify_area(df)
         df = DataService._parse_dates(df)
         df = DataService._normalize_numeric_fields(df)
+        df = DataService._identify_failure_type(df)
 
         return df
 
@@ -72,6 +73,20 @@ class DataService:
                 df['resultado_entregue'],
                 errors='coerce'
             ).fillna(0)
+        return df
+
+    @staticmethod
+    def _identify_failure_type(df: pd.DataFrame) -> pd.DataFrame:
+        """Traduz o código de tipo_falha (S/H/P) em descrição legível"""
+        if 'tipo_falha' not in df.columns:
+            return df
+
+        df['tipo_falha_desc'] = df['tipo_falha'].map(TIPO_FALHA_MAP)
+
+        if 'status' in df.columns:
+            eh_falha = df['status'].str.lower() == 'falha'
+            df.loc[eh_falha & df['tipo_falha_desc'].isna(), 'tipo_falha_desc'] = TIPO_FALHA_NAO_CLASSIFICADO
+
         return df
 
     @staticmethod
@@ -163,6 +178,29 @@ class DataService:
         return df_comparacao.sort_values(by='resultado_esperado', ascending=True)
 
     @staticmethod
+    def get_failure_breakdown(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Conta as execuções com falha por tipo (Sistema/Humana/Desenvolvimento/Não Classificado).
+
+        Args:
+            df: DataFrame filtrado
+
+        Returns:
+            DataFrame com colunas ['tipo_falha_desc', 'quantidade']
+        """
+        if df.empty or 'status' not in df.columns or 'tipo_falha_desc' not in df.columns:
+            return pd.DataFrame(columns=['tipo_falha_desc', 'quantidade'])
+
+        df_falhas = df[df['status'].str.lower() == 'falha']
+        if df_falhas.empty:
+            return pd.DataFrame(columns=['tipo_falha_desc', 'quantidade'])
+
+        contagem = df_falhas['tipo_falha_desc'].value_counts().reset_index()
+        contagem.columns = ['tipo_falha_desc', 'quantidade']
+
+        return contagem.sort_values(by='quantidade', ascending=True)
+
+    @staticmethod
     def prepare_table_data(df: pd.DataFrame) -> pd.DataFrame:
         """
         Prepara dados para exibição em tabela.
@@ -188,6 +226,7 @@ class DataService:
             'data_fim',
             'duracao',
             'status',
+            'tipo_falha_desc',
             'erros'
         ]
 
@@ -213,6 +252,7 @@ class DataService:
             'data_fim': 'Data Fim',
             'duracao': 'Duração',
             'status': 'Status',
+            'tipo_falha_desc': 'Tipo de Falha',
             'erros': 'Erros'
         }
 

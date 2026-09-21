@@ -77,6 +77,18 @@ class MainController:
         """
         return self.data_service.prepare_comparison_data(df)
 
+    def get_failure_breakdown(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Obtém contagem de falhas por tipo (Sistema/Humana/Desenvolvimento).
+
+        Args:
+            df: DataFrame filtrado
+
+        Returns:
+            DataFrame com contagem por tipo de falha
+        """
+        return self.data_service.get_failure_breakdown(df)
+
     def prepare_display_table(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Prepara dados para tabela de exibição.
@@ -95,6 +107,7 @@ class MainController:
         processos: list = None,
         tipos_fluxo: list = None,
         status: list = None,
+        tipos_falha: list = None,
         periodo: tuple = None
     ) -> pd.DataFrame:
         """
@@ -105,6 +118,7 @@ class MainController:
             processos: Lista de processos selecionados
             tipos_fluxo: Lista de tipos de fluxo selecionados
             status: Lista de status selecionados
+            tipos_falha: Lista de tipos de falha selecionados
             periodo: Tupla com datas (inicio, fim)
 
         Returns:
@@ -120,6 +134,9 @@ class MainController:
 
         if status and 'status' in df_filtered.columns:
             df_filtered = df_filtered[df_filtered['status'].isin(status)]
+
+        if tipos_falha and 'tipo_falha_desc' in df_filtered.columns:
+            df_filtered = df_filtered[df_filtered['tipo_falha_desc'].isin(tipos_falha)]
 
         if periodo and 'data_inicio_dt' in df_filtered.columns:
             if isinstance(periodo, (list, tuple)) and len(periodo) == 2:

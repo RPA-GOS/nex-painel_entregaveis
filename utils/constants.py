@@ -49,3 +49,17 @@ COLORS_LIGHT = {
 
 CACHE_TTL_SECONDS = 300
 REQUEST_TIMEOUT_SECONDS = 15
+
+TIPO_FALHA_MAP = {
+    'S': 'Indisponibilidade de Sistema',
+    'H': 'Falha Humana',
+    'P': 'Falha de Desenvolvimento',
+}
+TIPO_FALHA_NAO_CLASSIFICADO = 'Não Classificado'
+
+FAILURE_COLORS = {
+    'Indisponibilidade de Sistema': '#3498DB',
+    'Falha Humana': '#F39C12',
+    'Falha de Desenvolvimento': '#9B59B6',
+    'Não Classificado': '#7F8C8D',
+}

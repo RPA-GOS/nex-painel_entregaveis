@@ -17,7 +17,8 @@ from utils.ui_components import (
     render_logo_centered,
     render_kpi_cards,
     render_comparison_chart,
-    render_health_donut
+    render_health_donut,
+    render_failure_breakdown
 )
 
 setup_locale()
@@ -68,7 +69,8 @@ def render_home_screen():
     )
     st.write("---")
 
-    df_rpa = controller.load_data()
+    with st.spinner("Carregando dados..."):
+        df_rpa = controller.load_data()
     contagem_por_area = controller.get_area_counts(df_rpa)
 
     # Filtrar apenas áreas com execuções (valor > 0)
@@ -143,14 +145,28 @@ def render_sidebar(df_area: pd.DataFrame):
                 placeholder="Todos"
             )
 
+        falhas_selecionadas = []
+        if 'tipo_falha_desc' in df_area.columns and df_area['tipo_falha_desc'].notna().any():
+            lista_falhas = sorted(df_area['tipo_falha_desc'].dropna().unique())
+            falhas_selecionadas = st.multiselect(
+                "Tipo de Falha",
+                options=lista_falhas,
+                placeholder="Todos"
+            )
+
         periodo = None
         if 'data_inicio_dt' in df_area.columns and not df_area['data_inicio_dt'].isna().all():
             data_minima = df_area['data_inicio_dt'].min().date()
             data_maxima = df_area['data_inicio_dt'].max().date()
 
+            hoje = datetime.now().date()
+            inicio_mes_atual = hoje.replace(day=1)
+            default_inicio = min(max(inicio_mes_atual, data_minima), data_maxima)
+            default_fim = max(min(hoje, data_maxima), data_minima)
+
             periodo = st.date_input(
                 "Período",
-                [data_minima, data_maxima],
+                [default_inicio, default_fim],
                 min_value=data_minima,
                 max_value=data_maxima,
                 format="DD/MM/YYYY"
@@ -161,12 +177,13 @@ def render_sidebar(df_area: pd.DataFrame):
             unsafe_allow_html=True
         )
 
-    return fluxos_selecionados, tipos_selecionados, status_selecionados, periodo
+    return fluxos_selecionados, tipos_selecionados, status_selecionados, falhas_selecionadas, periodo
 
 
 def render_dashboard_screen():
     """Renderiza dashboard detalhado da área"""
-    df_rpa = controller.load_data()
+    with st.spinner("Carregando dados..."):
+        df_rpa = controller.load_data()
     df_area = controller.get_area_data(df_rpa, st.session_state.area_atual)
 
     head_left, head_mid, head_right = st.columns([4, 1, 1])
@@ -199,18 +216,20 @@ def render_dashboard_screen():
                 st.write(df_rpa['area_nome'].value_counts())
         return
 
-    fluxos_sel, tipos_sel, status_sel, periodo = render_sidebar(df_area)
+    fluxos_sel, tipos_sel, status_sel, falhas_sel, periodo = render_sidebar(df_area)
 
     df_filtrado = controller.apply_filters(
         df_area,
         processos=fluxos_sel,
         tipos_fluxo=tipos_sel,
         status=status_sel,
+        tipos_falha=falhas_sel,
         periodo=periodo
     )
 
     kpi = controller.calculate_kpis(df_filtrado)
-    render_kpi_cards(kpi, st.session_state.area_atual, COLORS, st.session_state.tema_escuro)
+    df_falhas = controller.get_failure_breakdown(df_filtrado)
+    render_kpi_cards(kpi, st.session_state.area_atual, COLORS, st.session_state.tema_escuro, df_falhas)
 
     st.write("##")
 
@@ -222,11 +241,21 @@ def render_dashboard_screen():
     render_comparison_chart(df_comparacao, COLORS)
 
     st.write("##")
-    st.markdown(
-        f"<h4 style='color:{COLORS['primary']};'>Saúde e Qualidade de Entrega</h4>",
-        unsafe_allow_html=True
-    )
-    render_health_donut(kpi, COLORS)
+    col_saude, col_falhas = st.columns(2)
+
+    with col_saude:
+        st.markdown(
+            f"<h4 style='color:{COLORS['primary']};'>Saúde e Qualidade de Entrega</h4>",
+            unsafe_allow_html=True
+        )
+        render_health_donut(kpi, COLORS)
+
+    with col_falhas:
+        st.markdown(
+            f"<h4 style='color:{COLORS['primary']};'>Tipos de Falha</h4>",
+            unsafe_allow_html=True
+        )
+        render_failure_breakdown(df_falhas, COLORS)
 
     st.write("---")
     st.markdown(

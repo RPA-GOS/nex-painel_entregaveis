@@ -15,6 +15,7 @@ class APIService:
     def __init__(self):
         self.api_url = settings.API_URL
         self.api_token = settings.API_TOKEN
+        self._session = requests.Session()
 
     def _get_headers(self) -> Dict[str, str]:
         """Retorna headers para requisição"""
@@ -30,7 +31,7 @@ class APIService:
             Lista de dicionários com dados dos entregáveis
         """
         try:
-            response = requests.get(
+            response = self._session.get(
                 self.api_url,
                 headers=self._get_headers(),
                 timeout=REQUEST_TIMEOUT_SECONDS
