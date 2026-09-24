@@ -5,12 +5,14 @@ Centraliza definições para facilitar manutenção.
 
 AREAS_MAP = {
     'bko': 'BackOffice',
+    'ctr': 'Controladoria',
     'ctb': 'Contabilidade',
     'fcs': 'Facilities',
     'fin': 'Financeiro',
     'i3d': 'Impressão 3D',
     'mnt': 'Manutenção',
     'nex': 'Núcleo de Excelência',
+    'nit': 'Núcleo de TI',
     'npe': 'Núcleo de Pessoas',
     'sti': 'Tecnologia',
     'jur': 'Setor Jurídico',

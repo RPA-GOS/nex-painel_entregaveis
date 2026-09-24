@@ -159,6 +159,20 @@ class MainController:
 
         return df_filtered
 
+    def get_monthly_overview(self, df: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
+        """
+        Retorna resumo de desempenho por área para o mês/ano informado.
+
+        Args:
+            df: DataFrame completo
+            year: Ano de referência
+            month: Mês de referência (1-12)
+
+        Returns:
+            DataFrame com colunas [area_nome, esperado, entregue, percentual] + linha Total
+        """
+        return self.data_service.calculate_area_monthly_summary(df, year, month)
+
     def prepare_excel_export(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Prepara DataFrame para exportação Excel.

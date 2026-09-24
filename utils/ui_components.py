@@ -253,6 +253,122 @@ def render_verba_insuficiente_section(df_verba: pd.DataFrame, colors: dict):
     )
 
 
+def render_overview_table(df_resumo: pd.DataFrame, periodo_str: str, colors: dict, is_dark: bool):
+    """Renderiza tabela HTML estilizada com o resumo mensal por área"""
+    shadow = 'rgba(0,0,0,0.3)' if is_dark else 'rgba(0,0,0,0.1)'
+    row_alt = 'rgba(255,255,255,0.04)' if is_dark else 'rgba(0,0,0,0.03)'
+
+    def pct_color(pct: float) -> str:
+        if pct >= 95:
+            return colors['success']
+        if pct >= 80:
+            return '#F39C12'
+        return colors['error']
+
+    header = (
+        f'<tr style="background-color:{colors["primary"]}; color:#FFFFFF;">'
+        '<th style="padding:12px 16px; text-align:left; font-size:14px;">Área</th>'
+        '<th style="padding:12px 16px; text-align:center; font-size:14px;">Período</th>'
+        '<th style="padding:12px 16px; text-align:right; font-size:14px;">Esperado</th>'
+        '<th style="padding:12px 16px; text-align:right; font-size:14px;">Entregue</th>'
+        '<th style="padding:12px 16px; text-align:right; font-size:14px;">% Atingimento</th>'
+        '</tr>'
+    )
+
+    rows_html = ''
+    for i, row in df_resumo.iterrows():
+        is_total = row['area_nome'] == 'Total'
+        bg = colors['card'] if is_total else (row_alt if i % 2 == 0 else 'transparent')
+        font_weight = '700' if is_total else '400'
+        font_size = '15px' if is_total else '14px'
+        pct = float(row['percentual'])
+        cor_pct = colors['primary'] if is_total else pct_color(pct)
+
+        rows_html += (
+            f'<tr style="background-color:{bg}; font-weight:{font_weight}; font-size:{font_size};">'
+            f'<td style="padding:10px 16px; color:{colors["text"]};">{row["area_nome"]}</td>'
+            f'<td style="padding:10px 16px; text-align:center; color:{colors["text_secondary"]};">{periodo_str}</td>'
+            f'<td style="padding:10px 16px; text-align:right; color:{colors["text"]};">{format_number_br(row["esperado"])}</td>'
+            f'<td style="padding:10px 16px; text-align:right; color:{colors["text"]};">{format_number_br(row["entregue"])}</td>'
+            f'<td style="padding:10px 16px; text-align:right; color:{cor_pct}; font-weight:700;">{pct:.2f}%</td>'
+            '</tr>'
+        )
+
+    tabela_html = (
+        f'<div style="overflow-x:auto; border-radius:12px; box-shadow:0 4px 15px {shadow};">'
+        f'<table style="width:100%; border-collapse:collapse;">'
+        f'<thead>{header}</thead>'
+        f'<tbody>{rows_html}</tbody>'
+        '</table></div>'
+    )
+
+    st.markdown(tabela_html, unsafe_allow_html=True)
+
+
+def render_overview_chart(df_resumo: pd.DataFrame, colors: dict):
+    """Renderiza gráfico de barras comparando esperado vs entregue por área (sem linha Total)"""
+    df_chart = df_resumo[df_resumo['area_nome'] != 'Total'].copy()
+    if df_chart.empty:
+        st.info("Nenhum dado disponível para o gráfico.")
+        return
+
+    df_chart = df_chart.sort_values('esperado', ascending=True)
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Bar(
+        y=df_chart['area_nome'],
+        x=df_chart['esperado'],
+        name='Esperado',
+        orientation='h',
+        marker_color=colors['info'],
+        text=df_chart['esperado'].apply(lambda v: format_number_br(v)),
+        textposition='outside',
+        textfont=dict(size=14, color=colors['text']),
+    ))
+
+    fig.add_trace(go.Bar(
+        y=df_chart['area_nome'],
+        x=df_chart['entregue'],
+        name='Entregue',
+        orientation='h',
+        marker_color=colors['success'],
+        text=df_chart['entregue'].apply(lambda v: format_number_br(v)),
+        textposition='outside',
+        textfont=dict(size=14, color=colors['text']),
+    ))
+
+    altura = max(400, len(df_chart) * 70)
+
+    fig.update_layout(
+        barmode='group',
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color=colors['text'], size=14),
+        xaxis_title="Quantidade",
+        yaxis_title="",
+        margin=dict(t=20, b=20, l=10, r=80),
+        height=altura,
+        bargap=0.25,
+        bargroupgap=0.08,
+        xaxis=dict(
+            title=dict(font=dict(color=colors['text'], size=16)),
+            tickfont=dict(color=colors['text'], size=13),
+        ),
+        yaxis=dict(tickfont=dict(color=colors['text'], size=14)),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            font=dict(color=colors['text'], size=14)
+        )
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+
 def render_health_donut(kpi, colors: dict):
     """Renderiza gráfico donut de saúde"""
     kpi_dict = kpi.to_dict()

@@ -51,7 +51,7 @@ class DataService:
     def _identify_area(df: pd.DataFrame) -> pd.DataFrame:
         """Identifica e adiciona coluna de área"""
         if 'nome_processo' in df.columns:
-            df['sigla'] = df['nome_processo'].str.split('-').str[0].str.lower()
+            df['sigla'] = df['nome_processo'].str.split(r'[-_]').str[0].str.lower()
             df['area_nome'] = df['sigla'].map(AREAS_MAP).fillna('Outros')
         return df
 
@@ -254,6 +254,60 @@ class DataService:
         contagem.columns = ['tipo_falha_desc', 'quantidade']
 
         return contagem.sort_values(by='quantidade', ascending=True)
+
+    @staticmethod
+    def calculate_area_monthly_summary(df: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
+        """
+        Calcula resumo mensal por área: esperado, entregue e % atingimento.
+        Exclui registros de Verba Insuficiente dos cálculos.
+        """
+        if df.empty or 'data_inicio_dt' not in df.columns:
+            return pd.DataFrame()
+
+        mask_period = (
+            (df['data_inicio_dt'].dt.month == month) &
+            (df['data_inicio_dt'].dt.year == year)
+        )
+        df_mes = df[mask_period].copy()
+
+        if df_mes.empty:
+            return pd.DataFrame()
+
+        mask_verba = DataService._mask_verba_insuficiente(df_mes)
+        df_mes = df_mes[~mask_verba]
+
+        if df_mes.empty:
+            return pd.DataFrame()
+
+        required_cols = ['area_nome', 'resultado_esperado', 'resultado_entregue']
+        if not all(col in df_mes.columns for col in required_cols):
+            return pd.DataFrame()
+
+        resumo = df_mes.groupby('area_nome').agg(
+            esperado=('resultado_esperado', 'sum'),
+            entregue=('resultado_entregue', 'sum')
+        ).reset_index()
+
+        resumo['percentual'] = resumo.apply(
+            lambda r: round((r['entregue'] / r['esperado'] * 100), 2) if r['esperado'] > 0 else 0.0,
+            axis=1
+        )
+        resumo['esperado'] = resumo['esperado'].astype(int)
+        resumo['entregue'] = resumo['entregue'].astype(int)
+        resumo = resumo.sort_values('area_nome').reset_index(drop=True)
+
+        total_esperado = int(resumo['esperado'].sum())
+        total_entregue = int(resumo['entregue'].sum())
+        total_pct = round((total_entregue / total_esperado * 100), 2) if total_esperado > 0 else 0.0
+
+        total_row = pd.DataFrame([{
+            'area_nome': 'Total',
+            'esperado': total_esperado,
+            'entregue': total_entregue,
+            'percentual': total_pct
+        }])
+
+        return pd.concat([resumo, total_row], ignore_index=True)
 
     @staticmethod
     def prepare_table_data(df: pd.DataFrame) -> pd.DataFrame:

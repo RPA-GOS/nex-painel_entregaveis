@@ -6,7 +6,8 @@ View Layer (Interface do Usuário)
 import streamlit as st
 import pandas as pd
 import io
-from datetime import datetime
+import calendar
+from datetime import datetime, timedelta
 
 from controllers.main_controller import MainController
 from utils.constants import AREAS_MAP, COLORS_DARK, COLORS_LIGHT
@@ -18,7 +19,9 @@ from utils.ui_components import (
     render_kpi_cards,
     render_comparison_chart,
     render_health_donut,
-    render_failure_breakdown
+    render_failure_breakdown,
+    render_overview_table,
+    render_overview_chart,
 )
 
 setup_locale()
@@ -33,6 +36,9 @@ if 'tema_escuro' not in st.session_state:
 
 if 'area_atual' not in st.session_state:
     st.session_state.area_atual = None
+
+if 'visao_geral' not in st.session_state:
+    st.session_state.visao_geral = False
 
 COLORS = COLORS_DARK if st.session_state.tema_escuro else COLORS_LIGHT
 
@@ -83,6 +89,12 @@ def render_home_screen():
     if not areas_com_dados:
         st.warning("Nenhuma área com execuções encontrada no momento.")
         return
+
+    if st.button("Visão Geral — Todas as Áreas", use_container_width=True, key="btn_visao_geral"):
+        st.session_state.visao_geral = True
+        st.rerun()
+
+    st.write("")
 
     cols = st.columns(3)
     for idx, (sigla, nome_area) in enumerate(areas_com_dados.items()):
@@ -284,7 +296,105 @@ def render_dashboard_screen():
             )
 
 
-if st.session_state.area_atual is None:
+MESES_PT = {
+    1: 'Janeiro', 2: 'Fevereiro', 3: 'Março', 4: 'Abril',
+    5: 'Maio', 6: 'Junho', 7: 'Julho', 8: 'Agosto',
+    9: 'Setembro', 10: 'Outubro', 11: 'Novembro', 12: 'Dezembro'
+}
+
+
+def render_overview_screen():
+    """Renderiza tela de visão geral mensal consolidada por área"""
+    col_logo, col_title, col_theme, col_back = st.columns([1, 4, 1, 1])
+
+    with col_logo:
+        render_logo('assets/osac.jpg', 80, COLORS)
+
+    with col_title:
+        st.markdown(
+            f"<h1 style='color:{COLORS['primary']}; margin-bottom:10px; margin-top:10px;'>"
+            "Visão Geral — Todas as Áreas</h1>",
+            unsafe_allow_html=True
+        )
+
+    with col_theme:
+        tema_icon = "☀️" if st.session_state.tema_escuro else "🌙"
+        tema_label = "Claro" if st.session_state.tema_escuro else "Escuro"
+        if st.button(f"{tema_icon} {tema_label}", use_container_width=True, key="toggle_theme_overview"):
+            st.session_state.tema_escuro = not st.session_state.tema_escuro
+            st.rerun()
+
+    with col_back:
+        if st.button("Voltar", use_container_width=True, key="back_overview"):
+            st.session_state.visao_geral = False
+            st.rerun()
+
+    st.write("---")
+
+    # Período padrão: mês anterior
+    hoje = datetime.now()
+    primeiro_dia_mes_atual = hoje.replace(day=1)
+    ultimo_dia_mes_passado = primeiro_dia_mes_atual - timedelta(days=1)
+    mes_default = ultimo_dia_mes_passado.month
+    ano_default = ultimo_dia_mes_passado.year
+
+    col_mes, col_ano, col_refresh = st.columns([2, 2, 1])
+
+    with col_mes:
+        mes_selecionado = st.selectbox(
+            "Mês",
+            options=list(MESES_PT.keys()),
+            format_func=lambda m: MESES_PT[m],
+            index=mes_default - 1,
+            key="overview_mes"
+        )
+
+    with col_ano:
+        anos_disponiveis = list(range(2024, hoje.year + 1))
+        ano_selecionado = st.selectbox(
+            "Ano",
+            options=anos_disponiveis,
+            index=anos_disponiveis.index(ano_default) if ano_default in anos_disponiveis else len(anos_disponiveis) - 1,
+            key="overview_ano"
+        )
+
+    with col_refresh:
+        st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
+        if st.button("Atualizar", use_container_width=True, key="refresh_overview"):
+            controller.clear_cache()
+            st.rerun()
+
+    with st.spinner("Carregando dados..."):
+        df_rpa = controller.load_data()
+
+    df_resumo = controller.get_monthly_overview(df_rpa, ano_selecionado, mes_selecionado)
+
+    if df_resumo.empty:
+        st.warning(
+            f"Nenhum dado encontrado para {MESES_PT[mes_selecionado]}/{ano_selecionado}. "
+            "Verifique se há execuções registradas neste período."
+        )
+        return
+
+    ultimo_dia = calendar.monthrange(ano_selecionado, mes_selecionado)[1]
+    periodo_str = f"01/{mes_selecionado:02d} a {ultimo_dia:02d}/{mes_selecionado:02d}/{ano_selecionado}"
+
+    st.markdown("<div style='margin-top:8px;'></div>", unsafe_allow_html=True)
+
+    render_overview_table(df_resumo, periodo_str, COLORS, st.session_state.tema_escuro)
+
+    st.write("##")
+
+    st.markdown(
+        f"<h4 style='color:{COLORS['primary']};'>Comparação: Esperado vs Entregue por Área</h4>",
+        unsafe_allow_html=True
+    )
+    render_overview_chart(df_resumo, COLORS)
+
+
+if st.session_state.visao_geral:
+    render_overview_screen()
+elif st.session_state.area_atual is None:
     render_home_screen()
 else:
     render_dashboard_screen()
