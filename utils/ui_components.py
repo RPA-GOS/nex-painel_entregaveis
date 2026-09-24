@@ -369,6 +369,76 @@ def render_overview_chart(df_resumo: pd.DataFrame, colors: dict):
     st.plotly_chart(fig, use_container_width=True)
 
 
+def render_overview_failure_chart(df_falhas: pd.DataFrame, colors: dict):
+    """
+    Gráfico de barras empilhadas horizontais mostrando volume de falhas
+    por tipo em cada área — para justificar o não atingimento na visão geral.
+    """
+    if df_falhas.empty:
+        st.info("Nenhuma falha registrada no período selecionado.")
+        return
+
+    tipos = df_falhas['tipo_falha_desc'].dropna().unique().tolist()
+    areas = sorted(df_falhas['area_nome'].unique().tolist())
+
+    fig = go.Figure()
+
+    for tipo in tipos:
+        cor = FAILURE_COLORS.get(tipo, colors['text_secondary'])
+        valores = []
+        textos = []
+        for area in areas:
+            mask = (df_falhas['area_nome'] == area) & (df_falhas['tipo_falha_desc'] == tipo)
+            qtd = int(df_falhas.loc[mask, 'quantidade'].sum())
+            valores.append(qtd)
+            textos.append(str(qtd) if qtd > 0 else '')
+
+        fig.add_trace(go.Bar(
+            name=tipo,
+            y=areas,
+            x=valores,
+            orientation='h',
+            marker_color=cor,
+            text=textos,
+            textposition='inside',
+            insidetextanchor='middle',
+            textfont=dict(size=13, color='#FFFFFF'),
+        ))
+
+    total_por_area = df_falhas.groupby('area_nome')['quantidade'].sum()
+    altura = max(350, len(areas) * 55)
+
+    fig.update_layout(
+        barmode='stack',
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color=colors['text'], size=13),
+        xaxis_title="Quantidade de Falhas",
+        yaxis_title="",
+        margin=dict(t=20, b=20, l=10, r=20),
+        height=altura,
+        bargap=0.3,
+        xaxis=dict(
+            title=dict(font=dict(color=colors['text'], size=15)),
+            tickfont=dict(color=colors['text'], size=13),
+        ),
+        yaxis=dict(tickfont=dict(color=colors['text'], size=14)),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            font=dict(color=colors['text'], size=13)
+        )
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    total_geral = int(df_falhas['quantidade'].sum())
+    st.caption(f"Total de falhas no período: **{total_geral}**")
+
+
 def render_health_donut(kpi, colors: dict):
     """Renderiza gráfico donut de saúde"""
     kpi_dict = kpi.to_dict()

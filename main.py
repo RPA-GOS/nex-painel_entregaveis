@@ -22,6 +22,7 @@ from utils.ui_components import (
     render_failure_breakdown,
     render_overview_table,
     render_overview_chart,
+    render_overview_failure_chart,
 )
 
 setup_locale()
@@ -390,6 +391,17 @@ def render_overview_screen():
         unsafe_allow_html=True
     )
     render_overview_chart(df_resumo, COLORS)
+
+    st.write("##")
+
+    st.markdown(
+        f"<h4 style='color:{COLORS['primary']};'>Volumetria de Falhas por Tipo e Área</h4>",
+        unsafe_allow_html=True
+    )
+    st.caption("Distribuição dos tipos de falha que justificam o não atingimento das metas.")
+
+    df_falhas_overview = controller.get_monthly_failure_breakdown(df_rpa, ano_selecionado, mes_selecionado)
+    render_overview_failure_chart(df_falhas_overview, COLORS)
 
 
 if st.session_state.visao_geral:

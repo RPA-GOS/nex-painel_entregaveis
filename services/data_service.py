@@ -310,6 +310,44 @@ class DataService:
         return pd.concat([resumo, total_row], ignore_index=True)
 
     @staticmethod
+    def calculate_area_failure_breakdown(df: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
+        """
+        Calcula volume de falhas por área e tipo no mês informado.
+
+        Returns:
+            DataFrame com colunas [area_nome, tipo_falha_desc, quantidade],
+            ordenado por área e quantidade decrescente.
+        """
+        if df.empty or 'data_inicio_dt' not in df.columns:
+            return pd.DataFrame()
+
+        mask_period = (
+            (df['data_inicio_dt'].dt.month == month) &
+            (df['data_inicio_dt'].dt.year == year)
+        )
+        df_mes = df[mask_period].copy()
+
+        if df_mes.empty:
+            return pd.DataFrame()
+
+        required = ['area_nome', 'status', 'tipo_falha_desc']
+        if not all(col in df_mes.columns for col in required):
+            return pd.DataFrame()
+
+        df_falhas = df_mes[df_mes['status'].str.lower() == 'falha']
+        if df_falhas.empty:
+            return pd.DataFrame()
+
+        contagem = (
+            df_falhas.groupby(['area_nome', 'tipo_falha_desc'])
+            .size()
+            .reset_index(name='quantidade')
+            .sort_values(['area_nome', 'quantidade'], ascending=[True, False])
+            .reset_index(drop=True)
+        )
+        return contagem
+
+    @staticmethod
     def prepare_table_data(df: pd.DataFrame) -> pd.DataFrame:
         """
         Prepara dados para exibição em tabela.

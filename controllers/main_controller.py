@@ -159,6 +159,15 @@ class MainController:
 
         return df_filtered
 
+    def get_monthly_failure_breakdown(self, df: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
+        """
+        Retorna volume de falhas por área e tipo no mês/ano informado.
+
+        Returns:
+            DataFrame com colunas [area_nome, tipo_falha_desc, quantidade]
+        """
+        return self.data_service.calculate_area_failure_breakdown(df, year, month)
+
     def get_monthly_overview(self, df: pd.DataFrame, year: int, month: int) -> pd.DataFrame:
         """
         Retorna resumo de desempenho por área para o mês/ano informado.
